@@ -4,7 +4,7 @@ pipeline {
 
     environment {
 
-        IMAGE = "dockerhubusername/blogging-platform"
+        IMAGE = "samiksha1195/blogging-platform"
 
     }
 
