@@ -1,4 +1,3 @@
-
 pipeline {
     agent any
 
@@ -68,13 +67,13 @@ pipeline {
                     sh '''
                       ssh ec2-user@$APP_HOST \
                         'sudo docker run -d --restart unless-stopped \
-                         --name blog-frontend -p 8080:80 \
-                         YOUR_DOCKERHUB_USERNAME/blog-frontend:latest'
+                         --name blog-frontend -p 80:80 \
+                         samiksha1195/blog-frontend:latest'
 
                       ssh ec2-user@$APP_HOST \
                         'sudo docker run -d --restart unless-stopped \
-                         --name blog-backend -p 5000:5000 \
-                         YOUR_DOCKERHUB_USERNAME/blog-backend:latest'
+                         --name blog-backend -p 8081:80 \
+                         samiksha1195/blog-backend:latest'
                     '''
                 }
             }
