@@ -1,82 +1,92 @@
-pipeline {
 
+pipeline {
     agent any
 
+    triggers {
+        pollSCM('H/2 * * * *')
+    }
+
     environment {
-
-        IMAGE = "dockerhubusername/blogging-platform"
-
+        DOCKERHUB_USER = 'samiksha1195'
+        FRONTEND_DIR = 'frontend'
+        BACKEND_DIR = 'backend'
+        APP_HOST = '10-0-2-161'
     }
 
     stages {
-
-        stage('Clone GitHub') {
-
+        stage('Checkout') {
             steps {
-
                 git branch: 'main',
                     url: 'https://github.com/Samiksha1195/blog-project.git'
-
             }
-
         }
 
-        stage('Build Docker Image') {
-
+        stage('Build Images') {
             steps {
-
-                sh 'docker build -t $IMAGE:latest .'
-
+                sh '''
+                  docker build -t $DOCKERHUB_USER/blog-frontend:latest "$FRONTEND_DIR"
+                  docker build -t $DOCKERHUB_USER/blog-backend:latest "$BACKEND_DIR"
+                '''
             }
-
         }
 
-        stage('Login Docker Hub') {
-
+        stage('Push Images') {
             steps {
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'dockerhub-creds',
+                        usernameVariable: 'DH_USER',
+                        passwordVariable: 'DH_TOKEN'
+                    )
+                ]) {
+                    sh '''
+                      echo "$DH_TOKEN" | docker login \
+                        -u "$DH_USER" --password-stdin
 
-                withCredentials([usernamePassword(credentialsId: 'dockerhub-cred',
+                      docker push $DOCKERHUB_USER/blog-frontend:latest
+                      docker push $DOCKERHUB_USER/blog-backend:latest
 
-                usernameVariable: 'USER',
+                      docker logout
+                    '''
+                }
+            }
+        }
 
-                passwordVariable: 'PASS')]) {
-
-                sh 'echo $PASS | docker login -u $USER --password-stdin'
-
+        stage('Deploy') {
+            steps {
+                sshagent(credentials: ['app-ssh-key']) {
+                    sh '''
+                      ssh -o StrictHostKeyChecking=accept-new \
+                        ec2-user@$APP_HOST \
+                        'sudo docker pull samiksha1195/blog-frontend:latest &&
+                         sudo docker pull samiksha1195/blog-backend:latest &&
+                         sudo docker rm -f blog-frontend blog-backend || true'
+                    '''
                 }
 
+                sshagent(credentials: ['app-ssh-key']) {
+                    sh '''
+                      ssh ec2-user@$APP_HOST \
+                        'sudo docker run -d --restart unless-stopped \
+                         --name blog-frontend -p 8080:80 \
+                         YOUR_DOCKERHUB_USERNAME/blog-frontend:latest'
+
+                      ssh ec2-user@$APP_HOST \
+                        'sudo docker run -d --restart unless-stopped \
+                         --name blog-backend -p 5000:5000 \
+                         YOUR_DOCKERHUB_USERNAME/blog-backend:latest'
+                    '''
+                }
             }
-
         }
-
-        stage('Push Docker Image') {
-
-            steps {
-
-                sh 'docker push $IMAGE:latest'
-
-            }
-
-        }
-
-        stage('Deploy Container') {
-
-            steps {
-
-                sh '''
-
-                docker rm -f blog-container || true
-
-                docker pull $IMAGE:latest
-
-                docker run -d --name blog-container -p 80:80 $IMAGE:latest
-
-                '''
-
-            }
-
-        }
-
     }
 
+    post {
+        success {
+            echo 'Blogging platform deployment succeeded.'
+        }
+        failure {
+            echo 'Deployment failed. Review the console output.'
+        }
+    }
 }
